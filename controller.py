@@ -5,36 +5,68 @@ import numpy as nm
 import cv2
 from PIL import ImageGrab
 import pytesseract
+from models import StaticVariables, ComparisonRecord, ComparisonResult
+
 
 pyautogui.FAILSAFE = True
 
 
-def search_hotel_only(destination, start_date, end_date, duration_from, duration_till, hotel_name):
+def search_hotel_only(row_record):
     """ Apply Bistro parameters inputs """
 
     result = False
+    click_location('reset_entry.png', 2, 10)
     click_location('customer_1.png')
     click_location('hotel_only.png', 2, 10)
     click_location('dest_3lc.png', 110, 10)
-    insert_text(destination)
+    insert_text(row_record.destination)
     click_location('arrival_date.png', 130, 10)
-    insert_text(start_date)
-    insert_text(end_date)
-    insert_text(duration_from)
+    insert_text(row_record.arrival)
+    insert_text(row_record.departure)
+    insert_text(str(row_record.duration_from))
     send_tabs(1)
-    insert_text(duration_till)
+    insert_text(str(row_record.duration_till))
     click_location('hotel_name.png', 100, 10)
-    insert_text(hotel_name)
-    sleep(0.20)
-    pyautogui.press('escape')
+    insert_text(row_record.hotel_name)
+
+    click_location('board_selector.png', 2, 10)
+    select_board(row_record.board)
+
     click_location('btn_update.png', 2, 10)
 
-    result = find_region()
-    if result:
-        result = find_hotel()
-    if result:
-        result = find_first_result()
+    result = get_starting_position('message.png')
+    if result is not None:
+        pyautogui.press('enter')
+        print('no result available')
+    else:
+        result = find_region()
+        if result:
+            result = find_hotel()
+        if result:
+            result = find_first_result()
+
     return result
+
+
+def select_board(board):
+    if board == '':
+        click_location('board_selector.png', 2, 10)
+    else:
+        number_of_downs = 0
+        if board == 'RO':
+            number_of_downs = 1
+        elif board == 'BB':
+            number_of_downs = 2
+        elif board == 'HB':
+            number_of_downs = 3
+        elif board == 'FB':
+            number_of_downs = 4
+        elif board == 'AI':
+            number_of_downs = 5
+
+        for i in range(1, number_of_downs):
+            pyautogui.press('down')
+        pyautogui.press('enter')
 
 
 def find_region():
@@ -67,10 +99,11 @@ def find_first_result():
     return result
 
 
-def scan_for_data():
+def scan_for_data(row_record):
     click_location('data_found.png', 100, 10)
     first_search = True
-    for i in range(0, 20):
+
+    while row_record.fti_price is None or row_record.competitor_price is None:
         if first_search:
             first_search = False
         else:
@@ -82,17 +115,36 @@ def scan_for_data():
 
         start_position = get_starting_position('start_selection.png')
         end_position = get_starting_position('end_selection.png')
+        pyautogui.moveTo([start_position.left + 100, start_position.top + 10])
+
         if start_position and end_position:
-            image_to_crop = [start_position.left, start_position.top - 3, end_position.left, end_position.top + 15]
-            image_to_string(image_to_crop)
-            get_price([start_position.left + 100, start_position.top + 10])
+            image_to_crop = [start_position.left + 43, start_position.top - 3, end_position.left, end_position.top + 15]
+            # image_to_string(image_to_crop)
+            comparison_result = ComparisonResult(image_to_string(image_to_crop))
+
+            print(comparison_result)
+
+            if comparison_result.operator == 'FTI' and row_record.fti_price is None:
+                row_record.fti_price = get_price()
+            if comparison_result.operator != 'FTI' and row_record.competitor_price is None:
+                row_record.competitor_name = comparison_result.operator
+                row_record.competitor_price = get_price()
+
+            # If data reached the end
+            if data_ended():
+                break
         else:
             print('error')
+    return row_record
 
 
-def get_price(location):
+def data_ended():
+    result = get_starting_position('data_ended.png') is not None
+    return result
+
+
+def get_price():
     result = None
-    pyautogui.moveTo(location)
     pyautogui.doubleClick()
     for i in range(0, 15):
         if get_starting_position('valid_booking.png'):
@@ -100,7 +152,7 @@ def get_price(location):
             if price_location:
                 image_to_crop = [price_location.left + 120, price_location.top,
                                  price_location.left + 300, price_location.top + 25]
-                image_to_string(image_to_crop)
+                result = image_to_string(image_to_crop)
                 break
         elif get_starting_position('rq_booking.png') or get_starting_position('na_booking.png'):
             break
@@ -162,11 +214,12 @@ def image_to_string(part_to_crop):
     # Bbox used to capture a specific area.
     cap = ImageGrab.grab(bbox=(part_to_crop[0], part_to_crop[1], part_to_crop[2], part_to_crop[3]))
     script_dir = os.path.dirname(__file__)
-    path = os.path.join(script_dir, 'ocr.png')
+    # path = os.path.join(script_dir, 'ocr.png')
     # cap.save(path)
     # Converted the image to monochrome for it to be easily
     # read by the OCR and obtained the output String.
     tesstr = pytesseract.image_to_string(
         cv2.cvtColor(nm.array(cap), cv2.COLOR_BGR2GRAY),
         lang='eng')
-    print(tesstr)
+    # print(tesstr)
+    return tesstr
