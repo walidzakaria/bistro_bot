@@ -1,3 +1,4 @@
+import decimal
 import os
 from time import sleep
 import pyautogui
@@ -9,6 +10,14 @@ from models import StaticVariables, ComparisonRecord, ComparisonResult
 
 
 pyautogui.FAILSAFE = True
+
+
+def no_offers():
+    result = False
+    if get_starting_position('message.png'):
+        pyautogui.press('escape')
+        result = True
+    return result
 
 
 def search_hotel_only(row_record):
@@ -33,12 +42,7 @@ def search_hotel_only(row_record):
     select_board(row_record.board)
 
     click_location('btn_update.png', 2, 10)
-
-    result = get_starting_position('message.png')
-    if result is not None:
-        pyautogui.press('enter')
-        print('no result available')
-    else:
+    if not no_offers():
         result = find_region()
         if result:
             result = find_hotel()
@@ -153,11 +157,25 @@ def get_price():
                 image_to_crop = [price_location.left + 120, price_location.top,
                                  price_location.left + 300, price_location.top + 25]
                 result = image_to_string(image_to_crop)
+                result = parse_number(result)
                 break
         elif get_starting_position('rq_booking.png') or get_starting_position('na_booking.png'):
             break
         sleep(0.5)
     pyautogui.press('escape')
+    return result
+
+
+def parse_number(string_number):
+    result = ''
+    valid_chars = '0123456789'
+    for i in string_number:
+        if i in valid_chars:
+            result += i
+        elif i == ',':
+            result += '.'
+    result = decimal.Decimal(result) / 2
+    result = round(result, 2)
     return result
 
 
